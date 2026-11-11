@@ -1,10 +1,11 @@
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import Peer, { type DataConnection } from 'peerjs'
 import './App.css'
 
 type Player = 'red' | 'blue'
 type Phase = Player | 'reveal'
-type GameMode = 'local' | 'cpu'
+type GameMode = 'local' | 'cpu' | 'online'
 
 type Character = {
   number: number
@@ -50,11 +51,105 @@ function CardDescription({ card }: { card?: Character }) {
 function App() {
   const [started, setStarted] = useState(false)
   const [gameMode, setGameMode] = useState<GameMode>('cpu')
+  const [onlineRole, setOnlineRole] = useState<Player | null>(null)
+  const [roomInput, setRoomInput] = useState('')
+  const [roomCode, setRoomCode] = useState('')
+  const [onlineStatus, setOnlineStatus] = useState('対戦方法を選んでください')
+  const peerRef = useRef<Peer | null>(null)
+  const connectionRef = useRef<DataConnection | null>(null)
+  const pendingRemoteCard = useRef<number | null>(null)
+  const redSelectedRef = useRef<number | null>(null)
+  const onlineRoleRef = useRef<Player | null>(null)
+  const resolveRef = useRef<(red: number, blue: number) => void>(() => {})
+  const nextRoundRef = useRef<() => void>(() => {})
+
+  useEffect(() => () => {
+    connectionRef.current?.close()
+    peerRef.current?.destroy()
+  }, [])
+
+  function sendOnline(message: Record<string, unknown>) {
+    if (connectionRef.current?.open) connectionRef.current.send(message)
+  }
+
+  function startOnlineGame() {
+    resetGame()
+    setStarted(true)
+    sendOnline({ type: 'start' })
+  }
+
+  function createRoom() {
+    connectionRef.current?.close()
+    peerRef.current?.destroy()
+    const code = Math.random().toString(36).slice(2, 7).toUpperCase()
+    const peer = new Peer(`rrivals-${code}`)
+    peerRef.current = peer
+    setRoomCode(code)
+    setOnlineRole('red')
+    setOnlineStatus('相手の参加を待っています')
+    peer.on('open', () => setOnlineStatus('部屋を作成しました。コードを相手に共有してください'))
+    peer.on('connection', connection => {
+      connectionRef.current = connection
+      connection.on('open', () => setOnlineStatus('相手が参加しました。対戦を始められます'))
+      connection.on('data', data => {
+        const msg = data as { type?: string; card?: number; action?: string }
+        if (msg.type === 'start') { resetGame(); setStarted(true) }
+        if (msg.type === 'play' && typeof msg.card === 'number') {
+          pendingRemoteCard.current = msg.card
+          if (onlineRoleRef.current === 'red' && redSelectedRef.current !== null) {
+            setBlueSelected(msg.card)
+            resolveRef.current(redSelectedRef.current, msg.card)
+          }
+        }
+        if (msg.type === 'red-play' && typeof msg.card === 'number' && onlineRoleRef.current === 'blue') {
+          setRedSelected(msg.card)
+          setPhase('blue')
+        }
+        if (msg.type === 'state' && onlineRoleRef.current === 'blue') {
+          const s = msg as unknown as { redSelected:number|null; blueSelected:number|null; redUsed:number[]; blueUsed:number[]; redWins:number; blueWins:number; pendingWins:number; round:number; redBoost:boolean; blueBoost:boolean; phase:Phase; firstPlayer:Player; resultMessage:string; gameOver:boolean }
+          setRedSelected(s.redSelected); setBlueSelected(s.blueSelected); setRedUsed(s.redUsed); setBlueUsed(s.blueUsed); setRedWins(s.redWins); setBlueWins(s.blueWins); setPendingWins(s.pendingWins); setRound(s.round); setRedBoost(s.redBoost); setBlueBoost(s.blueBoost); setPhase(s.phase); setFirstPlayer(s.firstPlayer); setResultMessage(s.resultMessage); setGameOver(s.gameOver)
+        }
+        if (msg.type === 'next' && onlineRoleRef.current === 'red') nextRoundRef.current()
+      })
+      connection.on('close', () => setOnlineStatus('相手との接続が切れました'))
+    })
+    peer.on('error', err => setOnlineStatus(`接続エラー: ${err.type}。部屋を作り直してください`))
+  }
+
+  function joinRoom() {
+    const code = roomInput.trim().toUpperCase()
+    if (!/^[A-Z0-9]{5}$/.test(code)) { setOnlineStatus('5文字の部屋コードを入力してください'); return }
+    connectionRef.current?.close()
+    peerRef.current?.destroy()
+    const peer = new Peer()
+    peerRef.current = peer
+    setOnlineRole('blue')
+    setOnlineStatus('部屋に接続しています…')
+    peer.on('open', () => {
+      const connection = peer.connect(`rrivals-${code}`, { reliable: true })
+      connectionRef.current = connection
+      connection.on('open', () => setOnlineStatus('接続しました。ホストが対戦を開始するまでお待ちください'))
+      connection.on('data', data => {
+        const msg = data as { type?: string; card?: number }
+        if (msg.type === 'start') { resetGame(); setStarted(true) }
+        if (msg.type === 'red-play' && typeof msg.card === 'number') { setRedSelected(msg.card); setPhase('blue') }
+        if (msg.type === 'state') {
+          const s = msg as unknown as { redSelected:number|null; blueSelected:number|null; redUsed:number[]; blueUsed:number[]; redWins:number; blueWins:number; pendingWins:number; round:number; redBoost:boolean; blueBoost:boolean; phase:Phase; firstPlayer:Player; resultMessage:string; gameOver:boolean }
+          setRedSelected(s.redSelected); setBlueSelected(s.blueSelected); setRedUsed(s.redUsed); setBlueUsed(s.blueUsed); setRedWins(s.redWins); setBlueWins(s.blueWins); setPendingWins(s.pendingWins); setRound(s.round); setRedBoost(s.redBoost); setBlueBoost(s.blueBoost); setPhase(s.phase); setFirstPlayer(s.firstPlayer); setResultMessage(s.resultMessage); setGameOver(s.gameOver)
+        }
+      })
+      connection.on('error', () => setOnlineStatus('部屋に接続できません。コードを確認してください'))
+      connection.on('close', () => setOnlineStatus('ホストとの接続が切れました'))
+    })
+    peer.on('error', () => setOnlineStatus('接続できませんでした。コードを確認して再度お試しください'))
+  }
   const [phase, setPhase] = useState<Phase>('red')
   const [firstPlayer, setFirstPlayer] = useState<Player>('red')
 
   const [redSelected, setRedSelected] = useState<number | null>(null)
   const [blueSelected, setBlueSelected] = useState<number | null>(null)
+  useEffect(() => { redSelectedRef.current = redSelected }, [redSelected])
+  useEffect(() => { onlineRoleRef.current = onlineRole }, [onlineRole])
 
   const [redUsed, setRedUsed] = useState<number[]>([])
   const [blueUsed, setBlueUsed] = useState<number[]>([])
@@ -98,15 +193,19 @@ function App() {
   function nextRound() {
     if (gameOver) {
       resetGame()
+      if (gameMode === 'online' && onlineRole === 'red') sendOnline({ type: 'state', redSelected: null, blueSelected: null, redUsed: [], blueUsed: [], redWins: 0, blueWins: 0, pendingWins: 0, round: 1, redBoost: false, blueBoost: false, phase: 'red', firstPlayer: 'red', resultMessage: '', gameOver: false })
       return
     }
 
     setRedSelected(null)
     setBlueSelected(null)
 
-    setPhase(gameMode === 'cpu' ? 'red' : firstPlayer)
+    setPhase(gameMode === 'cpu' || gameMode === 'online' ? 'red' : firstPlayer)
     setRound(round + 1)
     setResultMessage('')
+    if (gameMode === 'online' && onlineRole === 'red') {
+      sendOnline({ type: 'state', redSelected: null, blueSelected: null, redUsed, blueUsed, redWins, blueWins, pendingWins, round: round + 1, redBoost, blueBoost, phase: firstPlayer, firstPlayer, resultMessage: '', gameOver: false })
+    }
   }
 
   function resolveCards(redNumber: number, blueNumber: number) {
@@ -215,7 +314,9 @@ function App() {
 
     let nextFirstPlayer: Player
 
-    if (redSpyActive && !blueSpyActive) {
+    if (gameMode === 'online') {
+      nextFirstPlayer = 'red'
+    } else if (redSpyActive && !blueSpyActive) {
       nextFirstPlayer = 'blue'
     } else if (blueSpyActive && !redSpyActive) {
       nextFirstPlayer = 'red'
@@ -277,7 +378,12 @@ function App() {
     setResultMessage(message)
     setGameOver(finished)
     setPhase('reveal')
+    if (gameMode === 'online' && onlineRole === 'red') {
+      sendOnline({ type: 'state', redSelected: redNumber, blueSelected: blueNumber, redUsed: [...redUsed, redNumber], blueUsed: [...blueUsed, blueNumber], redWins: newRedWins, blueWins: newBlueWins, pendingWins: newPendingWins, round, redBoost: redNumber === 6 && !redBlocked, blueBoost: blueNumber === 6 && !blueBlocked, phase: 'reveal', firstPlayer: nextFirstPlayer, resultMessage: message, gameOver: finished })
+    }
   }
+
+  useEffect(() => { resolveRef.current = resolveCards; nextRoundRef.current = nextRound })
 
   function chooseCpuCard(redNumber: number) {
     const available = characters.filter(card => !blueUsed.includes(card.number))
@@ -302,6 +408,20 @@ function App() {
 
   function confirmCard() {
     if (phase === 'reveal') return
+
+    if (gameMode === 'online') {
+      if (onlineRole === 'red' && phase === 'red' && redSelected !== null) {
+        setPhase('blue')
+        sendOnline({ type: 'red-play', card: redSelected })
+        return
+      }
+      if (onlineRole === 'blue' && phase === 'blue' && blueSelected !== null) {
+        sendOnline({ type: 'play', card: blueSelected })
+        setOnlineStatus('カードを送信しました。結果を待っています')
+        return
+      }
+      return
+    }
 
     if (phase === 'red' && gameMode === 'cpu') {
       if (redSelected === null) return
@@ -335,23 +455,39 @@ function App() {
           {!started && (
             <div className="mode-picker" aria-label="対戦モード">
               <button className={gameMode === 'cpu' ? 'mode-button active' : 'mode-button'} onClick={() => setGameMode('cpu')}>CPU対戦</button>
-              <button className={gameMode === 'local' ? 'mode-button active' : 'mode-button'} onClick={() => setGameMode('local')}>2人対戦</button>
+              <button className={gameMode === 'local' ? 'mode-button active' : 'mode-button'} onClick={() => setGameMode('local')}>同じ端末</button>
+              <button className={gameMode === 'online' ? 'mode-button active' : 'mode-button'} onClick={() => setGameMode('online')}>オンライン</button>
+            </div>
+          )}
+
+          {!started && gameMode === 'online' && (
+            <div className="online-lobby">
+              <button className="mode-button" onClick={createRoom}>対戦部屋を作る</button>
+              {roomCode && <p className="hint">部屋コード：<strong>{roomCode}</strong></p>}
+              <p className="hint">{onlineStatus}</p>
+              <div className="join-room">
+                <input aria-label="部屋コード" maxLength={5} placeholder="部屋コード" value={roomInput} onChange={e => setRoomInput(e.target.value.toUpperCase())} />
+                <button className="mode-button" onClick={joinRoom}>コードで参加</button>
+              </div>
             </div>
           )}
 
           <button
             className="start"
+            disabled={!started && gameMode === 'online' && (onlineRole !== 'red' || !connectionRef.current?.open)}
             onClick={() => {
               if (started) {
                 setStarted(false)
+              } else if (gameMode === 'online') {
+                if (onlineRole === 'red' && connectionRef.current?.open) startOnlineGame()
               } else {
                 resetGame()
                 setStarted(true)
               }
             }}
           >
-            {started ? 'カード一覧に戻る' : 'ゲームを始める'}　›
-          </button>
+            {started ? 'カード一覧に戻る' : gameMode === 'online' ? (onlineRole === 'blue' ? 'ホストの開始を待っています' : '対戦を始める') : 'ゲームを始める'}　›
+            </button>
         </div>
 
         <div className="castle">
@@ -401,9 +537,9 @@ function App() {
 
           {phase === 'blue' && (
             <>
-              <h2>{gameMode === 'cpu' ? '🤖 CPUがカードを選択中' : '🔵 青の王国：カード選択'}</h2>
+              <h2>{gameMode === 'cpu' ? '🤖 CPUがカードを選択中' : gameMode === 'online' && onlineRole === 'red' ? '🔵 相手がカードを選択中' : '🔵 青の王国：カード選択'}</h2>
               <p className="hint">
-                {gameMode === 'cpu' ? 'CPUの選択を待っています' : '青側のカードを1枚選んでください'}
+                {gameMode === 'cpu' || (gameMode === 'online' && onlineRole === 'red') ? onlineStatus : '青側のカードを1枚選んでください'}
               </p>
             </>
           )}
@@ -436,7 +572,7 @@ function App() {
                 現在のスコア：赤 {redWins} 勝 ／ 青 {blueWins} 勝
               </p>
 
-              <button className="confirm" onClick={nextRound}>
+              <button className="confirm" onClick={() => gameMode === 'online' && onlineRole === 'blue' ? sendOnline({ type: 'next' }) : nextRound()}>
                 {gameOver ? 'もう一度対戦する' : '次のラウンドへ'}
               </button>
             </>
@@ -444,7 +580,7 @@ function App() {
 
           {phase !== 'reveal' && (
             <>
-              <div className="hand">
+              {(gameMode !== 'online' || (phase === 'red' && onlineRole === 'red') || (phase === 'blue' && onlineRole === 'blue')) && <div className="hand">
                 {characters.map(card => {
                   const selected =
                     phase === 'red'
@@ -485,9 +621,11 @@ function App() {
                     </button>
                   )
                 })}
-              </div>
+              </div>}
 
-              <button
+              {gameMode === 'online' && onlineRole === 'red' && phase === 'blue' && <p className="hint">相手のカード選択を待っています…</p>}
+
+              {(gameMode !== 'online' || (phase === 'red' && onlineRole === 'red') || (phase === 'blue' && onlineRole === 'blue')) && <button
                 className="confirm"
                 disabled={
                   phase === 'red'
@@ -499,7 +637,7 @@ function App() {
                 {phase === 'red'
                   ? (gameMode === 'cpu' ? 'カードを出してCPUと対戦' : '赤のカードを確定')
                   : '青のカードを確定'}
-              </button>
+              </button>}
             </>
           )}
         </section>
