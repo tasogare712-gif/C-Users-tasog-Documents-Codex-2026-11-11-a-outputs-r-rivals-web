@@ -263,9 +263,16 @@ function App() {
         redAssassinActive || blueAssassinActive
 
       let winner: Player | null = null
+      const redMageDefeatsJoker = redNumber === 5 && blueNumber === 0
+      const blueMageDefeatsJoker = blueNumber === 5 && redNumber === 0
 
-      // 道化の能力：どちらかが道化なら必ず引き分け
-      if (redNumber === 0 || blueNumber === 0) {
+      // 魔術師は道化の引き分け効果を無効化し、魔術師側が勝つ。
+      if (redMageDefeatsJoker) {
+        winner = 'red'
+      } else if (blueMageDefeatsJoker) {
+        winner = 'blue'
+      // 道化の能力：魔術師に無効化されない場合は引き分け
+      } else if (redNumber === 0 || blueNumber === 0) {
         winner = null
         message = '道化の能力発動！今回の対決は引き分け！'
       } else if (redPower === bluePower) {
@@ -309,6 +316,10 @@ function App() {
 
         if (ministerBonus > 0) {
           message += ' 大臣の追加勝利！'
+        }
+
+        if (redMageDefeatsJoker || blueMageDefeatsJoker) {
+          message += ' 魔術師が道化の能力を無効化し、勝利！'
         }
       }
     }
