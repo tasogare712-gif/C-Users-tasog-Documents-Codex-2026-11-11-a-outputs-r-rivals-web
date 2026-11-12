@@ -208,7 +208,9 @@ function App() {
     }
 
     setRedSelected(null)
-    const openingPlayer = forcedFirst ?? firstPlayer
+    // 通常ラウンドは赤（CPU戦ではプレイヤー）が選び、密偵が発動した場合だけ
+    // 次の1回に相手を先出しにする。
+    const openingPlayer = forcedFirst ?? 'red'
     setForcedFirst(null) // 密偵の効果は次の勝負1回で消費する
     const cpuStarts = gameMode === 'cpu' && openingPlayer === 'blue'
     // CPU先出し時はカードを表にしてから、プレイヤーに選択させる。
@@ -319,7 +321,7 @@ function App() {
     setRedBoost(redNumber === 6 && !redBlocked)
     setBlueBoost(blueNumber === 6 && !blueBlocked)
 
-    // 密偵：次のラウンドの先手を相手にする
+    // 密偵：出された側を次の1回だけ先出しにする。
     const redSpyActive =
       redNumber === 2 && !redBlocked
 
@@ -334,7 +336,7 @@ function App() {
       nextForcedFirst = 'red'
     }
 
-    const nextDefaultFirstPlayer = firstPlayer === 'red' ? 'blue' : 'red'
+    const nextDefaultFirstPlayer: Player = 'red'
     setFirstPlayer(nextDefaultFirstPlayer)
     setForcedFirst(nextForcedFirst)
 
