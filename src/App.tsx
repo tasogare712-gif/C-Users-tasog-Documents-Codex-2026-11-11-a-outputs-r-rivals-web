@@ -108,8 +108,8 @@ function App() {
           setPhase('blue')
         }
         if (msg.type === 'state' && onlineRoleRef.current === 'blue') {
-          const s = msg as unknown as { redSelected:number|null; blueSelected:number|null; redUsed:number[]; blueUsed:number[]; redWins:number; blueWins:number; pendingWins:number; round:number; redBoost:boolean; blueBoost:boolean; phase:Phase; firstPlayer:Player; resultMessage:string; gameOver:boolean }
-          setRedSelected(s.redSelected); setBlueSelected(s.blueSelected); setRedUsed(s.redUsed); setBlueUsed(s.blueUsed); setRedWins(s.redWins); setBlueWins(s.blueWins); setPendingWins(s.pendingWins); setRound(s.round); setRedBoost(s.redBoost); setBlueBoost(s.blueBoost); setPhase(s.phase); setFirstPlayer(s.firstPlayer); setResultMessage(s.resultMessage); setGameOver(s.gameOver)
+          const s = msg as unknown as { redSelected:number|null; blueSelected:number|null; redUsed:number[]; blueUsed:number[]; redWins:number; blueWins:number; pendingWins:number; round:number; redBoost:boolean; blueBoost:boolean; phase:Phase; firstPlayer:Player; forcedFirst:Player|null; resultMessage:string; gameOver:boolean }
+          setRedSelected(s.redSelected); setBlueSelected(s.blueSelected); setRedUsed(s.redUsed); setBlueUsed(s.blueUsed); setRedWins(s.redWins); setBlueWins(s.blueWins); setPendingWins(s.pendingWins); setRound(s.round); setRedBoost(s.redBoost); setBlueBoost(s.blueBoost); setPhase(s.phase); setFirstPlayer(s.firstPlayer); setForcedFirst(s.forcedFirst); setResultMessage(s.resultMessage); setGameOver(s.gameOver)
         }
         if (msg.type === 'next' && onlineRoleRef.current === 'red') nextRoundRef.current()
       })
@@ -136,8 +136,8 @@ function App() {
         if (msg.type === 'start') { resetGame(); setStarted(true) }
         if (msg.type === 'red-play' && typeof msg.card === 'number') { setRedSelected(msg.card); setPhase('blue') }
         if (msg.type === 'state') {
-          const s = msg as unknown as { redSelected:number|null; blueSelected:number|null; redUsed:number[]; blueUsed:number[]; redWins:number; blueWins:number; pendingWins:number; round:number; redBoost:boolean; blueBoost:boolean; phase:Phase; firstPlayer:Player; resultMessage:string; gameOver:boolean }
-          setRedSelected(s.redSelected); setBlueSelected(s.blueSelected); setRedUsed(s.redUsed); setBlueUsed(s.blueUsed); setRedWins(s.redWins); setBlueWins(s.blueWins); setPendingWins(s.pendingWins); setRound(s.round); setRedBoost(s.redBoost); setBlueBoost(s.blueBoost); setPhase(s.phase); setFirstPlayer(s.firstPlayer); setResultMessage(s.resultMessage); setGameOver(s.gameOver)
+          const s = msg as unknown as { redSelected:number|null; blueSelected:number|null; redUsed:number[]; blueUsed:number[]; redWins:number; blueWins:number; pendingWins:number; round:number; redBoost:boolean; blueBoost:boolean; phase:Phase; firstPlayer:Player; forcedFirst:Player|null; resultMessage:string; gameOver:boolean }
+          setRedSelected(s.redSelected); setBlueSelected(s.blueSelected); setRedUsed(s.redUsed); setBlueUsed(s.blueUsed); setRedWins(s.redWins); setBlueWins(s.blueWins); setPendingWins(s.pendingWins); setRound(s.round); setRedBoost(s.redBoost); setBlueBoost(s.blueBoost); setPhase(s.phase); setFirstPlayer(s.firstPlayer); setForcedFirst(s.forcedFirst); setResultMessage(s.resultMessage); setGameOver(s.gameOver)
         }
       })
       connection.on('error', () => setOnlineStatus('部屋に接続できません。コードを確認してください'))
@@ -147,6 +147,8 @@ function App() {
   }
   const [phase, setPhase] = useState<Phase>('red')
   const [firstPlayer, setFirstPlayer] = useState<Player>('red')
+  // 密偵で発生する、次の勝負1回だけの先出し強要。
+  const [forcedFirst, setForcedFirst] = useState<Player | null>(null)
 
   const [redSelected, setRedSelected] = useState<number | null>(null)
   const [blueSelected, setBlueSelected] = useState<number | null>(null)
@@ -169,10 +171,16 @@ function App() {
 
   const redCard = characters.find(c => c.number === redSelected)
   const blueCard = characters.find(c => c.number === blueSelected)
+  const firstPlayedCard = phase === 'red' && blueSelected !== null
+    ? { card: blueCard, side: 'blue' as const, label: gameMode === 'cpu' ? 'CPUが先に出したカード' : '青が先に出したカード' }
+    : phase === 'blue' && redSelected !== null
+      ? { card: redCard, side: 'red' as const, label: '赤が先に出したカード' }
+      : null
 
   function resetGame() {
     setPhase('red')
     setFirstPlayer('red')
+    setForcedFirst(null)
 
     setRedSelected(null)
     setBlueSelected(null)
@@ -195,20 +203,22 @@ function App() {
   function nextRound() {
     if (gameOver) {
       resetGame()
-      if (gameMode === 'online' && onlineRole === 'red') sendOnline({ type: 'state', redSelected: null, blueSelected: null, redUsed: [], blueUsed: [], redWins: 0, blueWins: 0, pendingWins: 0, round: 1, redBoost: false, blueBoost: false, phase: 'red', firstPlayer: 'red', resultMessage: '', gameOver: false })
+      if (gameMode === 'online' && onlineRole === 'red') sendOnline({ type: 'state', redSelected: null, blueSelected: null, redUsed: [], blueUsed: [], redWins: 0, blueWins: 0, pendingWins: 0, round: 1, redBoost: false, blueBoost: false, phase: 'red', firstPlayer: 'red', forcedFirst: null, resultMessage: '', gameOver: false })
       return
     }
 
     setRedSelected(null)
-    // 密偵でCPUが先手になった場合、CPUはプレイヤーより先にカードを選んで待つ。
-    const cpuStarts = gameMode === 'cpu' && firstPlayer === 'blue'
+    const openingPlayer = forcedFirst ?? firstPlayer
+    setForcedFirst(null) // 密偵の効果は次の勝負1回で消費する
+    const cpuStarts = gameMode === 'cpu' && openingPlayer === 'blue'
+    // CPU先出し時はカードを表にしてから、プレイヤーに選択させる。
     setBlueSelected(cpuStarts ? chooseCpuOpeningCard() : null)
 
-    setPhase(gameMode === 'cpu' ? 'red' : firstPlayer)
+    setPhase(gameMode === 'cpu' ? 'red' : openingPlayer)
     setRound(round + 1)
     setResultMessage('')
     if (gameMode === 'online' && onlineRole === 'red') {
-      sendOnline({ type: 'state', redSelected: null, blueSelected: null, redUsed, blueUsed, redWins, blueWins, pendingWins, round: round + 1, redBoost, blueBoost, phase: firstPlayer, firstPlayer, resultMessage: '', gameOver: false })
+      sendOnline({ type: 'state', redSelected: null, blueSelected: null, redUsed, blueUsed, redWins, blueWins, pendingWins, round: round + 1, redBoost, blueBoost, phase: openingPlayer, firstPlayer, forcedFirst: null, resultMessage: '', gameOver: false })
     }
   }
 
@@ -316,18 +326,17 @@ function App() {
     const blueSpyActive =
       blueNumber === 2 && !blueBlocked
 
-    let nextFirstPlayer: Player
+    let nextForcedFirst: Player | null = null
 
     if (redSpyActive && !blueSpyActive) {
-      nextFirstPlayer = 'blue'
+      nextForcedFirst = 'blue'
     } else if (blueSpyActive && !redSpyActive) {
-      nextFirstPlayer = 'red'
-    } else {
-      nextFirstPlayer =
-        firstPlayer === 'red' ? 'blue' : 'red'
+      nextForcedFirst = 'red'
     }
 
-    setFirstPlayer(nextFirstPlayer)
+    const nextDefaultFirstPlayer = firstPlayer === 'red' ? 'blue' : 'red'
+    setFirstPlayer(nextDefaultFirstPlayer)
+    setForcedFirst(nextForcedFirst)
 
     // 使用済みカードを記録
     setRedUsed([...redUsed, redNumber])
@@ -373,15 +382,19 @@ function App() {
       message += ' 青の将軍が次のカードを強化！'
     }
 
-    if (redSpyActive || blueSpyActive) {
-      message += ' 密偵の効果で次の先手が変わります！'
+    if (redSpyActive && !blueSpyActive) {
+      message += ' 密偵発動！相手は次の勝負で先にカードを出します（先出し強要）。'
+    } else if (blueSpyActive && !redSpyActive) {
+      message += ' 密偵発動！相手は次の勝負で先にカードを出します（先出し強要）。'
+    } else if (redSpyActive && blueSpyActive) {
+      message += ' 密偵が同時に発動し、先出し強要は相殺されました。'
     }
 
     setResultMessage(message)
     setGameOver(finished)
     setPhase('reveal')
     if (gameMode === 'online' && onlineRole === 'red') {
-      sendOnline({ type: 'state', redSelected: redNumber, blueSelected: blueNumber, redUsed: [...redUsed, redNumber], blueUsed: [...blueUsed, blueNumber], redWins: newRedWins, blueWins: newBlueWins, pendingWins: newPendingWins, round, redBoost: redNumber === 6 && !redBlocked, blueBoost: blueNumber === 6 && !blueBlocked, phase: 'reveal', firstPlayer: nextFirstPlayer, resultMessage: message, gameOver: finished })
+      sendOnline({ type: 'state', redSelected: redNumber, blueSelected: blueNumber, redUsed: [...redUsed, redNumber], blueUsed: [...blueUsed, blueNumber], redWins: newRedWins, blueWins: newBlueWins, pendingWins: newPendingWins, round, redBoost: redNumber === 6 && !redBlocked, blueBoost: blueNumber === 6 && !blueBlocked, phase: 'reveal', firstPlayer: nextDefaultFirstPlayer, forcedFirst: nextForcedFirst, resultMessage: message, gameOver: finished })
     }
   }
 
@@ -543,7 +556,7 @@ function App() {
             <>
               <h2>{gameMode === 'online' && onlineRole === 'blue' ? '🔴 相手がカードを選択中' : '🔴 赤の王国：カード選択'}</h2>
               <p className="hint">
-                {gameMode === 'online' && onlineRole === 'blue' ? onlineStatus : gameMode === 'cpu' && blueSelected !== null ? 'CPUが先にカードを選びました。あなたのカードを選んでください' : '使用済みカードは選べません'}
+                {gameMode === 'online' && onlineRole === 'blue' ? (blueSelected !== null ? '先に出されたカードが公開されました。相手の選択を待っています' : onlineStatus) : blueSelected !== null ? `${gameMode === 'cpu' ? 'CPU' : '青'}が先にカードを出しました。公開されたカードを見て選んでください` : '使用済みカードは選べません'}
               </p>
             </>
           )}
@@ -552,7 +565,7 @@ function App() {
             <>
               <h2>{gameMode === 'cpu' ? '🤖 CPUがカードを選択中' : gameMode === 'online' && onlineRole === 'red' ? '🔵 相手がカードを選択中' : '🔵 青の王国：カード選択'}</h2>
               <p className="hint">
-                {gameMode === 'cpu' || (gameMode === 'online' && onlineRole === 'red') ? onlineStatus : '青側のカードを1枚選んでください'}
+                {redSelected !== null ? '赤が先にカードを出しました。公開されたカードを見て選んでください' : gameMode === 'cpu' || (gameMode === 'online' && onlineRole === 'red') ? onlineStatus : '青側のカードを1枚選んでください'}
               </p>
             </>
           )}
@@ -593,6 +606,18 @@ function App() {
 
           {phase !== 'reveal' && (
             <>
+              {firstPlayedCard?.card && (
+                <div className="first-play">
+                  <p className="hint">{firstPlayedCard.label}（公開）</p>
+                  <div className={`playing-card ${firstPlayedCard.side}`} style={{ maxWidth: 150, marginInline: 'auto' }}>
+                    <span className="number">{firstPlayedCard.card.number}</span>
+                    <span className="portrait">{firstPlayedCard.card.symbol}</span>
+                    <span className="card-name">{firstPlayedCard.card.name}</span>
+                    <CardDescription card={firstPlayedCard.card} />
+                    {(firstPlayedCard.side === 'red' ? redBoost : blueBoost) && <span>＋2</span>}
+                  </div>
+                </div>
+              )}
               {(gameMode !== 'online' || (phase === 'red' && onlineRole === 'red') || (phase === 'blue' && onlineRole === 'blue')) && <div className="hand">
                 {characters.map(card => {
                   const selected =
