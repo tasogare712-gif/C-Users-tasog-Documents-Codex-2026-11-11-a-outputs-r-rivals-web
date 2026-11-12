@@ -609,6 +609,7 @@ function App() {
               {firstPlayedCard?.card && (
                 <div className="first-play">
                   <p className="hint">{firstPlayedCard.label}（公開）</p>
+                  <p className="hint">先に出された数字：<strong style={{ fontSize: '1.6em', color: '#ffe18b' }}>{firstPlayedCard.card.number}</strong></p>
                   <div className={`playing-card ${firstPlayedCard.side}`} style={{ maxWidth: 150, marginInline: 'auto' }}>
                     <span className="number">{firstPlayedCard.card.number}</span>
                     <span className="portrait">{firstPlayedCard.card.symbol}</span>
