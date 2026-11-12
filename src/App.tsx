@@ -94,11 +94,13 @@ function App() {
       connection.on('data', data => {
         const msg = data as { type?: string; card?: number; action?: string }
         if (msg.type === 'start') { resetGame(); setStarted(true) }
-        if (msg.type === 'play' && typeof msg.card === 'number') {
+        if ((msg.type === 'play' || msg.type === 'blue-play') && typeof msg.card === 'number') {
           pendingRemoteCard.current = msg.card
+          setBlueSelected(msg.card)
           if (onlineRoleRef.current === 'red' && redSelectedRef.current !== null) {
-            setBlueSelected(msg.card)
             resolveRef.current(redSelectedRef.current, msg.card)
+          } else if (onlineRoleRef.current === 'red') {
+            setPhase('red')
           }
         }
         if (msg.type === 'red-play' && typeof msg.card === 'number' && onlineRoleRef.current === 'blue') {
@@ -198,9 +200,11 @@ function App() {
     }
 
     setRedSelected(null)
-    setBlueSelected(null)
+    // 密偵でCPUが先手になった場合、CPUはプレイヤーより先にカードを選んで待つ。
+    const cpuStarts = gameMode === 'cpu' && firstPlayer === 'blue'
+    setBlueSelected(cpuStarts ? chooseCpuOpeningCard() : null)
 
-    setPhase(gameMode === 'cpu' || gameMode === 'online' ? 'red' : firstPlayer)
+    setPhase(gameMode === 'cpu' ? 'red' : firstPlayer)
     setRound(round + 1)
     setResultMessage('')
     if (gameMode === 'online' && onlineRole === 'red') {
@@ -314,9 +318,7 @@ function App() {
 
     let nextFirstPlayer: Player
 
-    if (gameMode === 'online') {
-      nextFirstPlayer = 'red'
-    } else if (redSpyActive && !blueSpyActive) {
+    if (redSpyActive && !blueSpyActive) {
       nextFirstPlayer = 'blue'
     } else if (blueSpyActive && !redSpyActive) {
       nextFirstPlayer = 'red'
@@ -406,18 +408,29 @@ function App() {
     return best[Math.floor(Math.random() * best.length)].number
   }
 
+  function chooseCpuOpeningCard() {
+    const available = characters.filter(card => !blueUsed.includes(card.number))
+    return available[Math.floor(Math.random() * available.length)].number
+  }
+
   function confirmCard() {
     if (phase === 'reveal') return
 
     if (gameMode === 'online') {
       if (onlineRole === 'red' && phase === 'red' && redSelected !== null) {
-        setPhase('blue')
-        sendOnline({ type: 'red-play', card: redSelected })
+        if (blueSelected !== null) {
+          resolveCards(redSelected, blueSelected)
+        } else {
+          setPhase('blue')
+          sendOnline({ type: 'red-play', card: redSelected })
+        }
         return
       }
       if (onlineRole === 'blue' && phase === 'blue' && blueSelected !== null) {
-        sendOnline({ type: 'play', card: blueSelected })
-        setOnlineStatus('カードを送信しました。結果を待っています')
+        const selectingFirst = redSelected === null
+        sendOnline({ type: selectingFirst ? 'blue-play' : 'play', card: blueSelected })
+        if (selectingFirst) setPhase('red')
+        setOnlineStatus(selectingFirst ? 'カードを送りました。相手の選択を待っています' : 'カードを送信しました。結果を待っています')
         return
       }
       return
@@ -425,7 +438,7 @@ function App() {
 
     if (phase === 'red' && gameMode === 'cpu') {
       if (redSelected === null) return
-      const cpuCard = chooseCpuCard(redSelected)
+      const cpuCard = blueSelected ?? chooseCpuCard(redSelected)
       setBlueSelected(cpuCard)
       resolveCards(redSelected, cpuCard)
       return
@@ -528,9 +541,9 @@ function App() {
 
           {phase === 'red' && (
             <>
-              <h2>🔴 赤の王国：カード選択</h2>
+              <h2>{gameMode === 'online' && onlineRole === 'blue' ? '🔴 相手がカードを選択中' : '🔴 赤の王国：カード選択'}</h2>
               <p className="hint">
-                使用済みカードは選べません
+                {gameMode === 'online' && onlineRole === 'blue' ? onlineStatus : gameMode === 'cpu' && blueSelected !== null ? 'CPUが先にカードを選びました。あなたのカードを選んでください' : '使用済みカードは選べません'}
               </p>
             </>
           )}
@@ -623,7 +636,7 @@ function App() {
                 })}
               </div>}
 
-              {gameMode === 'online' && onlineRole === 'red' && phase === 'blue' && <p className="hint">相手のカード選択を待っています…</p>}
+              {gameMode === 'online' && ((onlineRole === 'red' && phase === 'blue') || (onlineRole === 'blue' && phase === 'red')) && <p className="hint">相手のカード選択を待っています…</p>}
 
               {(gameMode !== 'online' || (phase === 'red' && onlineRole === 'red') || (phase === 'blue' && onlineRole === 'blue')) && <button
                 className="confirm"
