@@ -310,6 +310,66 @@ button {
   color: #c7b58f;
 }
 
+.victory-message {
+  max-width: 760px;
+  margin: 10px auto;
+  padding: 10px 14px;
+  border: 1px solid #80633c;
+  border-left-width: 4px;
+  border-radius: 9px;
+  background: #171315;
+  text-align: left;
+}
+
+.victory-message.red { border-left-color: #d66a69; }
+.victory-message.blue { border-left-color: #68a0e8; }
+.victory-message.draw { border-left-color: #d4b775; }
+
+.victory-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.victory-icon {
+  color: #e8c77b;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.victory-heading small {
+  color: #c7b58f;
+  font: 600 10px/1.3 Arial, sans-serif;
+  letter-spacing: 1.2px;
+}
+
+.victory-heading h2 {
+  margin: 1px 0 0;
+  font-size: clamp(17px, 3.3vw, 21px);
+  line-height: 1.35;
+}
+
+.victory-message.red .victory-heading h2 { color: #f08b88; }
+.victory-message.blue .victory-heading h2 { color: #86b8ff; }
+.victory-message.draw .victory-heading h2 { color: #f4d891; }
+
+.victory-details {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+  padding: 7px 0 0;
+  border-top: 1px solid #55422d;
+  list-style: none;
+  color: #e4d4b2;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.victory-details li { display: flex; align-items: baseline; gap: 5px; }
+
 .playing-card {
   width: 100%;
   border-color: #d4b775;
@@ -359,6 +419,9 @@ footer {
     padding: 8px;
     margin-top: 12px;
   }
+
+  .victory-message { margin: 8px auto; padding: 9px 10px; }
+  .victory-details { gap: 3px 10px; font-size: 12px; }
 
   .card-history { padding: 8px; margin: 10px auto; }
   .card-history-columns { gap: 6px; }
