@@ -84,7 +84,7 @@ function App() {
   function createRoom() {
     connectionRef.current?.close()
     peerRef.current?.destroy()
-    const code = Math.random().toString(36).slice(2, 7).toUpperCase()
+    const code = String(Math.floor(10000 + Math.random() * 90000))
     const peer = new Peer(`rrivals-${code}`)
     peerRef.current = peer
     setRoomCode(code)
@@ -627,6 +627,26 @@ function App() {
           {blueBoost && (
             <p className="hint">🔵 青：将軍の＋2効果が有効</p>
           )}
+
+          <section className="card-history" aria-label="使用カード履歴">
+            <h3>使用カード履歴</h3>
+            <div className="card-history-columns">
+              <div className="card-history-side red-history">
+                <strong>🔴 赤</strong>
+                <p>{redUsed.length ? redUsed.map(number => {
+                  const card = characters.find(item => item.number === number)
+                  return card ? `${card.number} ${card.name}` : ''
+                }).join(' ・ ') : 'まだありません'}</p>
+              </div>
+              <div className="card-history-side blue-history">
+                <strong>🔵 青</strong>
+                <p>{blueUsed.length ? blueUsed.map(number => {
+                  const card = characters.find(item => item.number === number)
+                  return card ? `${card.number} ${card.name}` : ''
+                }).join(' ・ ') : 'まだありません'}</p>
+              </div>
+            </div>
+          </section>
 
           {simultaneousOnline && (
             <>
