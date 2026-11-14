@@ -258,6 +258,7 @@ function App() {
     }
 
     setRedSelected(null)
+    redSelectedRef.current = null
     // 通常ラウンドは赤（CPU戦ではプレイヤー）が選び、密偵が発動した場合だけ
     // 次の1回に相手を先出しにする。
     const openingPlayer = forcedFirst ?? 'red'
@@ -266,13 +267,19 @@ function App() {
     setRevealFirstCard(nextRevealFirstCard)
     const cpuStarts = gameMode === 'cpu' && openingPlayer === 'blue'
     // CPU先出し時はカードを表にしてから、プレイヤーに選択させる。
-    setBlueSelected(cpuStarts ? chooseCpuOpeningCard() : null)
+    const openingCpuCard = cpuStarts ? chooseCpuOpeningCard() : null
+    setBlueSelected(openingCpuCard)
+    blueSelectedRef.current = openingCpuCard
+    setRedLocked(false)
+    setBlueLocked(false)
+    redLockedRef.current = false
+    blueLockedRef.current = false
 
     setPhase(gameMode === 'cpu' ? 'red' : openingPlayer)
     setRound(round + 1)
     setResultMessage('')
     if (gameMode === 'online' && onlineRole === 'red') {
-      sendOnline({ type: 'state', redSelected: null, blueSelected: null, redUsed, blueUsed, redWins, blueWins, pendingWins, round: round + 1, redBoost, blueBoost, phase: openingPlayer, firstPlayer, forcedFirst: null, revealFirstCard: nextRevealFirstCard, resultMessage: '', gameOver: false })
+      sendOnline({ type: 'state', redSelected: null, blueSelected: null, redUsed, blueUsed, redWins, blueWins, pendingWins, round: round + 1, redBoost, blueBoost, phase: openingPlayer, firstPlayer, forcedFirst: null, revealFirstCard: nextRevealFirstCard, redLocked: false, blueLocked: false, resultMessage: '', gameOver: false })
     }
   }
 
