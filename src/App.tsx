@@ -203,6 +203,15 @@ function App() {
 
   const redCard = characters.find(c => c.number === redSelected)
   const blueCard = characters.find(c => c.number === blueSelected)
+  const resultLines = resultMessage.split(/[！!]/).map(line => line.trim()).filter(Boolean)
+  const victoryHeadline = resultLines.find(line => line.includes('ゲーム優勝'))
+    ?? resultLines.find(line => line.includes('ゲームは引き分け'))
+    ?? resultLines.find(line => line.includes('勝分を獲得'))
+    ?? resultLines.find(line => line.includes('引き分け'))
+    ?? resultLines[0]
+    ?? '対戦結果'
+  const victoryTone = victoryHeadline.includes('赤') ? 'red' : victoryHeadline.includes('青') ? 'blue' : 'draw'
+  const resultDetails = resultLines.filter(line => line !== victoryHeadline)
   const firstPlayedSide: Player | null = phase === 'red' && blueSelected !== null
     ? 'blue'
     : phase === 'blue' && redSelected !== null
@@ -701,7 +710,23 @@ function App() {
                 </div>
               </div>
 
-              <h2>{resultMessage}</h2>
+              <div className={`victory-message ${victoryTone}`} role="status" aria-live="polite">
+                <div className="victory-heading">
+                  <span className="victory-icon" aria-hidden="true">♛</span>
+                  <div>
+                    <small>{victoryHeadline.includes('ゲーム優勝') ? 'GAME VICTORY' : victoryHeadline.includes('引き分け') ? 'DRAW' : 'ROUND RESULT'}</small>
+                    <h2>{victoryHeadline}！</h2>
+                  </div>
+                </div>
+                {resultDetails.length > 0 && (
+                  <ul className="victory-details">
+                    {resultDetails.map((detail, index) => {
+                      const icon = detail.includes('大臣') ? '🏅' : detail.includes('将軍') ? '✨' : detail.includes('密偵') ? '◈' : detail.includes('魔術師') ? '🪄' : detail.includes('暗殺者') ? '⚔️' : detail.includes('王子') ? '♛' : detail.includes('姫') ? '👸' : '•'
+                      return <li key={`${index}-${detail}`}><span aria-hidden="true">{icon}</span>{detail}！</li>
+                    })}
+                  </ul>
+                )}
+              </div>
 
               <p className="hint">
                 現在のスコア：赤 {redWins} 勝 ／ 青 {blueWins} 勝
