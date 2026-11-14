@@ -472,25 +472,9 @@ function App() {
 
   useEffect(() => { resolveRef.current = resolveCards; nextRoundRef.current = nextRound })
 
-  function chooseCpuCard(redNumber: number) {
+  function chooseCpuCard() {
     const available = characters.filter(card => !blueUsed.includes(card.number))
-    // 相手の選択を読めないため、残りカードの強さと特殊能力を見て選びます。
-    const redBoosted = redBoost
-    const scored = available.map(card => {
-      let score = card.number
-      if (card.number === 0) score = redNumber >= 5 ? 5.5 : 2.5
-      if (card.number === 1 && redNumber === 7) score = 20
-      if (card.number === 3) score += redNumber !== 7 ? 1.5 : -2
-      if (card.number === 4) score += 0.8
-      if (card.number === 5) score += redNumber === 4 || redNumber === 6 ? 2 : 0.3
-      if (card.number === 6 && !blueBoost) score -= 0.4
-      if (card.number === 7 && redNumber === 1) score = -5
-      if (redBoosted) score -= 0.25
-      return { number: card.number, score }
-    })
-    const bestScore = Math.max(...scored.map(card => card.score))
-    const best = scored.filter(card => card.score >= bestScore - 0.8)
-    return best[Math.floor(Math.random() * best.length)].number
+    return available[Math.floor(Math.random() * available.length)].number
   }
 
   function chooseCpuOpeningCard() {
@@ -543,7 +527,7 @@ function App() {
 
     if (phase === 'red' && gameMode === 'cpu') {
       if (redSelected === null) return
-      const cpuCard = blueSelected ?? chooseCpuCard(redSelected)
+      const cpuCard = blueSelected ?? chooseCpuCard()
       setBlueSelected(cpuCard)
       resolveCards(redSelected, cpuCard)
       return
